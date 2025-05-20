@@ -1,10 +1,15 @@
-# 실시간 입찰 공고 탭
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+import streamlit as st  # streamlit 모듈 임포트 추가
+import pandas as pd
+from pymongo import MongoClient
+from streamlit_autorefresh import st_autorefresh
+
 
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
+# 실시간 입찰 공고 탭
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
 
 
 @st.cache_resource(show_spinner=False)
