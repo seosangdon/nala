@@ -2,8 +2,8 @@ name: 나라장터 API 데이터 수집 및 구글 드라이브 저장
 
 on:
   schedule:
-    # 1분마다 실행
-    - cron: '*/1 * * * *'
+    # 5분마다 실행
+    - cron: '*/5 * * * *'
   workflow_dispatch:  # 수동 실행 옵션
 
 jobs:
