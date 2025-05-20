@@ -105,7 +105,7 @@ with tab1:
     st.subheader("📢 현재 진행 중인 입찰 목록")
 
     if df_live.empty:
-        st.warning("데이터를 불러올 수 없습니다. Google Drive 연결을 확인하세요.")
+        st.warning("데이터를 불러올 수 없습니다.")
     else:
         df_live = df_live[[
             "bidNtceNo", "bidNtceNm", "ntceInsttNm", 
