@@ -5,6 +5,8 @@ from google.oauth2 import service_account
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 # Google BigQuery 인증 설정
 def get_bigquery_data():
     try:
@@ -97,7 +99,7 @@ live_bids = df_live.to_dict(orient="records")
 # ------------------------
 completed_bids = df_completed.to_dict(orient="records")
 
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 st.title("📝 실시간 입찰 공고 및 낙찰 결과")
 
 tab1, tab2 = st.tabs(["📢 실시간 입찰 공고", "📑 입찰 결과"])
