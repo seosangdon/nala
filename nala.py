@@ -3,6 +3,9 @@ import pandas as pd
 from pymongo import MongoClient
 from streamlit_autorefresh import st_autorefresh
 
+# 실시간 입찰 공고 탭
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 # MongoDB Atlas 연결 URI
 MONGO_URI = "mongodb+srv://6334711:fwEMwzX17LbuUhrX@cluster0.bgpadmi.mongodb.net/"
 
@@ -78,8 +81,7 @@ def format_won(amount):
     except (ValueError, AttributeError):
         return "공고 참조"
 
-# 실시간 입찰 공고 탭
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 st.title("📝 실시간 입찰 공고 및 낙찰 결과")
 
 tab1, tab2 = st.tabs(["📢 실시간 입찰 공고", "📑 입찰 결과"])
