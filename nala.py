@@ -4,6 +4,10 @@ from pymongo import MongoClient
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 # MongoDB 연결
 def get_mongo_data():
     try:
