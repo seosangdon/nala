@@ -14,7 +14,11 @@ MONGO_URI = "mongodb+srv://6334711:fwEMwzX17LbuUhrX@cluster0.bgpadmi.mongodb.net
 def get_mongo_data():
     try:
         # MongoDB Atlas에 연결
-        client = MongoClient(MONGO_URI)
+        client = MongoClient(
+            MONGO_URI,
+            tls=True,
+            tlsCAFile=certifi.where()
+            )
         db = client['6334711']  # 데이터베이스 이름 설정
 
         # 두 개의 컬렉션 설정
