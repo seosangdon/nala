@@ -1,0 +1,38 @@
+name: 나라장터 API 데이터 수집 및 구글 드라이브 저장
+
+on:
+  schedule:
+    # 1분마다 실행
+    - cron: '*/1 * * * *'
+  workflow_dispatch:  # 수동 실행 옵션
+
+jobs:
+  fetch-and-store:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 레포지토리 체크아웃
+        uses: actions/checkout@v3
+      
+      - name: Python 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: 패키지 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests python-dateutil pytz pydrive2 oauth2client
+          
+      - name: 서비스 계정 키 파일 생성
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
+        
+      - name: 나라장터 API 데이터 가져오기 및 구글 드라이브에 저장
+        run: python fetch_naraget_gdrive.py
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      
+      - name: 서비스 계정 키 파일 삭제
+        if: always()  # 항상 실행 (오류 발생시에도)
+        run: rm -f service_account.json
