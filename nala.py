@@ -1,52 +1,40 @@
-import streamlit as st  # streamlit 모듈 임포트 추가
+import streamlit as st
 import pandas as pd
 from pymongo import MongoClient
 from streamlit_autorefresh import st_autorefresh
-import certifi  # certifi 모듈 추가
 
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# MongoDB Atlas 연결 URI
+MONGO_URI = "mongodb+srv://6334711:fwEMwzX17LbuUhrX@cluster0.bgpadmi.mongodb.net/"
 
-# 실시간 입찰 공고 탭
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
-
-
-@st.cache_resource(show_spinner=False)
+# MongoDB Atlas 연결
 def get_mongo_data():
     try:
-        # ① secrets.toml에서 불러오기
-        uri     = st.secrets["mongodb"]["uri"]
-        db_name = st.secrets["mongodb"]["database"]
+        # MongoDB Atlas에 연결
+        client = MongoClient(MONGO_URI,)
+        db = client['6334711']  # 데이터베이스 이름 설정
 
-        # ② Atlas에 TLS 인증서 검증 포함하여 연결
-        client = MongoClient(
-            uri,
-            tls=True,
-            tlsCAFile=certifi.where()
-        )
-        db = client[db_name]
+        # 두 개의 컬렉션 설정
+        collection_bids = db['ai_coding_bids']  # 공고 관련 컬렉션
+        collection_bids_status = db['ai_coding_bids_status']  # 낙찰 관련 컬렉션
 
-        coll_bids      = db["ai_coding_bids"]
-        coll_bids_stat = db["ai_coding_bids_status"]
-
-        # 필요한 필드만 projection
-        proj_live = {
-            "bidNtceNo": 1, "bidNtceNm": 1, "ntceInsttNm": 1,
-            "bsnsDivNm": 1, "asignBdgtAmt": 1, "bidNtceDate": 1,
-            "bidClseDate": 1, "bidClseTm": 1, "bidNtceUrl": 1,
-            "bidNtceBgn": 1, "bidNtceSttusNm": 1,
-            "dmndInsttNm": 1, "bidprcPsblIndstrytyNm": 1
+        # 필요한 필드만 선택하여 최적화된 데이터 로딩
+        projection_bids = {
+            "bidNtceNo": 1,
+            "bidNtceNm": 1,
+            "ntceInsttNm": 1,
+            "bsnsDivNm": 1,
+            "asignBdgtAmt": 1,
+            "bidNtceDate": 1,
+            "bidClseDate": 1,
+            "bidNtceUrl": 1,
+            "bidNtceBgn": 1,
+            "bidNtceSttusNm": 1,
+            "dmndInsttNm": 1,
+            "bidClseTm": 1,
+            "bidprcPsblIndstrytyNm": 1
         }
-
-        live_data      = list(coll_bids.find({}, proj_live))
-        completed_data = list(coll_bids_stat.find({}))
-
-        return pd.DataFrame(live_data), pd.DataFrame(completed_data)
-
-    except Exception as e:
-        st.error(f"MongoDB Atlas 연결 실패: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        live_data = list(collection_bids.find({}, projection_bids))
+        df_live = pd.DataFrame(live_data)
 
         # 낙찰 데이터 로딩 (모든 필드 가져오기)
         projection_bids_status = {}  # 빈 딕셔너리로 설정하여 모든 필드 선택
@@ -90,7 +78,8 @@ def format_won(amount):
     except (ValueError, AttributeError):
         return "공고 참조"
 
-
+# 실시간 입찰 공고 탭
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
 st.title("📝 실시간 입찰 공고 및 낙찰 결과")
 
 tab1, tab2 = st.tabs(["📢 실시간 입찰 공고", "📑 입찰 결과"])
@@ -105,7 +94,7 @@ with tab1:
     st.subheader("📢 현재 진행 중인 입찰 목록")
 
     if df_live.empty:
-        st.warning("데이터를 불러올 수 없습니다.")
+        st.warning("데이터를 불러올 수 없습니다. Google Drive 연결을 확인하세요.")
     else:
         df_live = df_live[[
             "bidNtceNo", "bidNtceNm", "ntceInsttNm", 
