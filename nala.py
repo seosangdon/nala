@@ -7,6 +7,9 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
+# 실시간 입찰 공고 탭
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 @st.cache_resource(show_spinner=False)
 def get_mongo_data():
     try:
@@ -85,8 +88,7 @@ def format_won(amount):
     except (ValueError, AttributeError):
         return "공고 참조"
 
-# 실시간 입찰 공고 탭
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 st.title("📝 실시간 입찰 공고 및 낙찰 결과")
 
 tab1, tab2 = st.tabs(["📢 실시간 입찰 공고", "📑 입찰 결과"])
