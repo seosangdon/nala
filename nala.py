@@ -1,9 +1,11 @@
+# 실시간 입찰 공고 탭
+st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
-# 실시간 입찰 공고 탭
-st.set_page_config(page_title="입찰 공고 서비스", layout="wide")
+
 
 @st.cache_resource(show_spinner=False)
 def get_mongo_data():
