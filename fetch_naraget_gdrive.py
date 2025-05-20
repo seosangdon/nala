@@ -1,151 +1,160 @@
+from urllib.parse import urlencode, quote_plus
+from datetime import datetime, timedelta
 import requests
 import json
-from pymongo import MongoClient
-from datetime import datetime, timedelta
-from urllib.parse import urlencode, quote_plus
+import os
+import logging
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
+from oauth2client.service_account import ServiceAccountCredentials
 
-# MongoDB 연결 설정
-client = MongoClient('mongodb://192.168.56.108:27017/')
-db = client['local']
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('naraget_api')
 
-# 두 개의 컬렉션 설정
-collection_bids = db['ai_coding_bids']  # 공고 관련 컬렉션
-collection_bids_status = db['ai_coding_bids_status']  # 낙찰 관련 컬렉션
-
-# 유니크 인덱스 생성 (한 번만 실행)
-collection_bids.create_index("bidNtceNo", unique=True)
-collection_bids_status.create_index("bidNtceNo", unique=True)
-
-# 마지막 수집 시점 로드 함수
-def load_last_collected_time(file_name, default_value):
-    try:
-        with open(file_name, 'r') as f:
-            return json.load(f)['last_collected_time']
-    except (FileNotFoundError, KeyError):
-        return default_value
-
-# ① 입찰 공고 데이터 상태 추적
-last_collected_file_bids = 'last_collected_time_bids.json'
-last_collected_time_bids = load_last_collected_time(last_collected_file_bids, (datetime.now() - timedelta(minutes=5)).strftime('%Y%m%d%H%M'))# 처음 시작 시 5분 전
-
-
-# 입찰 공고 API 호출
-API_KEY = "DcZ5b7lx/oHvPlE7aW4wTlrptzalhS9RwW5qUWfFc1MgsRjOO3pKHLspaIbRaImLNj1B7KoOYRV1tgH0zQbYCQ=="
+# API 설정
+API_KEY = os.environ.get("API_KEY", "")  # 환경 변수에서 가져오기
 BASE_URL = "http://apis.data.go.kr/1230000/ao/PubDataOpnStdService/getDataSetOpnStdBidPblancInfo"
 
-num = 1
-info = []
+# 구글 드라이브 폴더 ID (데이터를 저장할 폴더)
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
 
-while True:
-
-    # last_collected_time_bids가 None일 경우 기본값 설정
-    if last_collected_time_bids is None:
-        last_collected_time_bids = (datetime.now() - timedelta(minutes=5)).strftime('%Y%m%d%H%M')  # 5분 전
-
-    params = {
-        'serviceKey': API_KEY,
-        'pageNo': num,
-        'numOfRows': 100,
-        'inqryDiv': 1,
-        'type': 'json',
-        'bidNtceBgnDt': int(last_collected_time_bids),  # 마지막 수집 시점 이후 데이터만 요청
-        'bidNtceEndDt': int(f"{datetime.now().strftime('%Y%m%d%H%M')}"),
-    }
-
-    query_string = urlencode(params, quote_via=quote_plus)
-    URL = f"{BASE_URL}?{query_string}"
-
+def authenticate_google_drive():
+    """Google Drive API 인증"""
     try:
-        response = requests.get(URL).json()
-        items = response['response']['body']['items']
-    except requests.exceptions.RequestException as e:
-        print(f"API 호출 오류: {e}")
-        break
-    except KeyError:
-        print("응답 형식 오류: 'items' 키가 없음")
-        break
-
-    if not items:
-        break
-    else:
-        info.extend(items)
-        num += 1
-
-    # 마지막 수집 시점 갱신 (입찰 공고)
-    last_collected_time_bids = items[-1].get('bidNtceBgnDt', None)  # 마지막 공고의 bidNtceBgnDt 기준
-    if last_collected_time_bids:
-        with open(last_collected_file_bids, 'w') as f:
-            json.dump({"last_collected_time": last_collected_time_bids}, f)
-
-
-# 공고 데이터 리스트
-from pymongo import UpdateOne
-operations = []
-for item in info:
-    bid_no = item.get("bidNtceNo")
-    if bid_no:
-        operations.append(
-            
-            UpdateOne(
-                {"bidNtceNo": bid_no},
-                {"$set": item},
-                upsert=True
-            )
-        )
-
-# bulk_write 수행
-if operations:
-    try:
-        result = collection_bids.bulk_write(operations)
-        print(f"업데이트: {result.modified_count}, 삽입: {result.upserted_count}")
+        # 서비스 계정 인증 설정
+        gauth = GoogleAuth()
+        
+        # 서비스 계정 사용 (키 파일은 환경에 따라 경로 조정 필요)
+        # 환경 변수에서 내용을 가져오거나 파일에서 읽을 수 있음
+        service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
+        
+        # 서비스 계정 JSON이 환경 변수에 내용으로 제공된 경우
+        if service_account_json.startswith('{'):
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+                temp_file.write(service_account_json)
+                temp_file_path = temp_file.name
+            scope = ['https://www.googleapis.com/auth/drive']
+            credentials = ServiceAccountCredentials.from_json_keyfile_name(temp_file_path, scope)
+            os.unlink(temp_file_path)  # 임시 파일 삭제
+        else:
+            # 서비스 계정 JSON이 파일로 제공된 경우
+            scope = ['https://www.googleapis.com/auth/drive']
+            credentials = ServiceAccountCredentials.from_json_keyfile_name(service_account_json, scope)
+        
+        gauth.credentials = credentials
+        drive = GoogleDrive(gauth)
+        logger.info("구글 드라이브 인증 성공")
+        return drive
     except Exception as e:
-        print(f"bulk_write 중 오류 발생: {e}")
-else:
-    print("처리할 항목이 없습니다.")
+        logger.error(f"구글 드라이브 인증 오류: {e}")
+        raise
 
-# ② 낙찰 정보 데이터 상태 추적
-last_collected_file_status = 'last_collected_time_status.json'
+def fetch_naraget_data():
+    """나라장터 API에서 입찰공고 데이터를 가져옵니다."""
+    num = 1
+    info = []
 
-# 마지막 수집 시점 로드 (낙찰 정보)
-try:
-    with open(last_collected_file_status, 'r') as f:
-        last_collected_time_status = json.load(f)['last_collected_time']
-except FileNotFoundError:
-    last_collected_time_status = (datetime.now() - timedelta(minutes=5)).strftime('%Y%m%d%H%M')  # 낙찰 정보의 기본 시작 시점
+    while True:
+        # API 요청 파라미터 설정
+        params = {
+            'serviceKey': API_KEY,
+            'pageNo': num,
+            'numOfRows': 100,
+            'inqryDiv': 1,  # 조회구분
+            'type': 'json',  # 응답 형식 지정 (xml 또는 json)
+            'bidNtceBgnDt': (datetime.now() - timedelta(minutes=5)).strftime('%Y%m%d%H%M'),  # 조회시작일시(5분 전)
+            'bidNtceEndDt': datetime.now().strftime('%Y%m%d%H%M')  # 조회종료일시(현재 시각 기준)
+        }
 
-# ② 낙찰 정보 API 호출
-service_key = "6FAWdycqkHj1fAb/TpeNQLlEzjIB+7eozDneMjTwZPUWDmva0FamSPT1uGtzrxVKuub/vADLVft2bCZ+hkL5YA=="
-url =  f"http://apis.data.go.kr/1230000/as/ScsbidInfoService/getScsbidListSttusThng"
+        # API 호출 URL 생성
+        query_string = urlencode(params, quote_via=quote_plus)
+        URL = f"{BASE_URL}?{query_string}"
 
-params = {
-    'serviceKey': service_key,
-    'numOfRows': '10',
-    'pageNo': '1',
-    'inqryDiv': '1',        # 1: 오늘, 2: 기간 조회
-    'inqryBgnDt': int(last_collected_time_bids),  # 조회 시작일
-    'inqryEndDt': int(f"{datetime.now().strftime('%Y%m%d%H%M')}"),  # 조회 종료일
-    'type': 'json',         # 응답 형식 (json or xml)
-}
+        # API 호출하기
+        try:
+            logger.info(f"API 요청 시도: 페이지 {num}")
+            response = requests.get(URL).json()
+            items = response['response']['body']['items']
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API 호출 오류: {e}")
+            break
+        except KeyError as e:
+            logger.error(f"응답 형식 오류: {e}, 전체 응답:{response}")
+            break
 
-response = requests.get(url, params=params)
-data = response.json()
+        if not items:
+            logger.info("더 이상 데이터가 없습니다.")
+            break
+        else:
+            logger.info(f"페이지 {num}에서 {len(items)}개 항목 수신")
+            info.extend(items)  # 데이터 추가
+            num += 1
 
-# 낙찰 데이터 처리 및 MongoDB에 저장
-for item in data['response']['body']['items']:
-    bid_no = item.get("bidNtceNo")
+    return info
+
+def save_to_google_drive(data, drive):
+    """데이터를 구글 드라이브에 저장합니다."""
     try:
-        collection_bids_status.update_one(
-            {"bidNtceNo": bid_no},
-            {"$set": item},
-            upsert=True
-        )
+        # 현재 시간으로 파일명 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"naraget_data_{timestamp}.json"
+        
+        # 임시 파일 생성
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "count": len(data),
+                "items": data
+            }, f, ensure_ascii=False, indent=2)
+        
+        # 구글 드라이브에 파일 업로드
+        gfile = drive.CreateFile({
+            'title': filename,
+            'parents': [{'id': GOOGLE_DRIVE_FOLDER_ID}]
+        })
+        gfile.SetContentFile(filename)
+        gfile.Upload()
+        
+        # 임시 파일 삭제
+        os.remove(filename)
+        
+        logger.info(f"구글 드라이브에 파일 업로드 성공: {filename}")
+        return True
     except Exception as e:
-        print(f"낙찰 데이터 업데이트 중 오류 발생: {e}")
+        logger.error(f"구글 드라이브 파일 업로드 오류: {e}")
+        return False
 
-# 마지막 수집 시점 갱신 (낙찰 정보)
-last_collected_time_status = data['response']['body']['items'][-1].get('bidNtceNo', None)  # 마지막 낙찰 공고의 bidNtceNo 기준
-if last_collected_time_status:
-    with open(last_collected_file_status, 'w') as f:
-        json.dump({"last_collected_time": last_collected_time_status}, f)
+def main():
+    """메인 실행 함수"""
+    if not API_KEY:
+        logger.error("API_KEY 환경 변수가 설정되지 않았습니다.")
+        return
+    
+    if not GOOGLE_DRIVE_FOLDER_ID:
+        logger.error("GOOGLE_DRIVE_FOLDER_ID 환경 변수가 설정되지 않았습니다.")
+        return
+    
+    try:
+        # 구글 드라이브 인증
+        drive = authenticate_google_drive()
+        
+        # 데이터 가져오기
+        logger.info("나라장터 API 데이터 수집 시작")
+        data = fetch_naraget_data()
+        
+        if data:
+            logger.info(f"총 {len(data)}개 입찰공고 데이터를 수집했습니다.")
+            # 구글 드라이브에 저장
+            save_to_google_drive(data, drive)
+        else:
+            logger.info("수집된 데이터가 없습니다.")
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
 
-print("✅ 낙찰 정보 저장 완료")
+if __name__ == "__main__":
+    main()
