@@ -2,7 +2,7 @@ import streamlit as st  # streamlit 모듈 임포트 추가
 import pandas as pd
 from pymongo import MongoClient
 from streamlit_autorefresh import st_autorefresh
-
+import certifi  # certifi 모듈 추가
 
 __import__('pysqlite3')
 import sys
